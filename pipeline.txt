@@ -1,0 +1,125 @@
+pipeline {
+    agent any
+    environment {
+        SONAR_TOKEN = credentials('project-token')
+        GRAFANA_API_KEY = credentials('grafana-api-key')
+        GRAFANA_URL = 'http://192.168.56.44:3000'
+        PROMETHEUS_URL = 'http://localhost:9090'
+    }
+    stages {
+        stage('Clonage du dépôt') {
+            steps {
+                echo 'Téléchargement...'
+                git branch: 'bassem', url: 'https://github.com/Reformed2D/Reformed2D_Devops.git', credentialsId: 'github-pat'
+            }
+        }
+        stage('Test Maven') {
+            steps {
+                sh 'mvn -version'
+            }
+        }
+        stage('Test Git') {
+            steps {
+                sh 'git --version'
+            }
+        }
+        stage('Maven Clean') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+        stage('MVN SONARQUBE') {
+    steps {
+        timeout(time: 20, unit: 'MINUTES') {  // Set an appropriate timeout
+            withSonarQubeEnv(installationName: 'sonarqube') {
+                sh "mvn sonar:sonar"
+            }
+        }
+    }
+}
+        /*stage('Déploiement vers Nexus') {
+    steps {
+        withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'MAVEN_USERNAME', passwordVariable: 'MAVEN_PASSWORD')]) {
+            sh '''
+                mvn deploy -DskipTests -s /usr/share/maven/conf/settings.xml
+            '''
+                }
+        }
+    }*/
+    stage('Build Docker Image') {
+            steps {
+                script {
+                    sh 'docker build -t bassemmahjoub/tp-foyer:5.0.0 .'
+                }
+            }
+        }
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'docker-hub-token', variable: 'DOCKER_TOKEN')]) {
+                        sh '''
+                            echo "${DOCKER_TOKEN}" | docker login -u bassemmahjoub --password-stdin
+                            docker push bassemmahjoub/tp-foyer:5.0.0
+                            docker logout
+                        '''
+                    }
+                }
+            }
+        }
+        stage('Deploy with Docker Compose') {
+            steps {
+                script {
+                    echo "Starting Docker containers using Docker Compose..."
+                    sh 'docker compose up -d'
+                }
+            }
+        }
+        stage('Use Existing Grafana Dashboard') {
+    steps {
+        echo "Grafana dashboard for monitoring available at: ${GRAFANA_URL}/d/haryan-jenkins/jenkins3a-performance-and-health-overview"
+    }
+}
+    }
+    post {
+        success {
+            emailext (
+                subject: "✅ Job build réussi '${env.JOB_NAME} [#${env.BUILD_NUMBER}]'",
+                body: """
+                    <html>
+                        <body>
+                            <h2 style="color: green;">✅ SUCCÈS : Job '${env.JOB_NAME} [#${env.BUILD_NUMBER}]'</h2>
+                            <p>Le job s'est terminé avec succès.</p>
+                            <h3>Détails :</h3>
+                            <ul>
+                                <li><strong>Numéro de build :</strong> ${env.BUILD_NUMBER}</li>
+                                <li><strong>Nom du job :</strong> ${env.JOB_NAME}</li>
+                            </ul>
+                        </body>
+                    </html>
+                """,
+                mimeType: 'text/html',
+                to: "bassem.mahjoub1013@gmail.com"
+            )
+        }
+        failure {
+            emailext (
+                subject: "❌ Échec de la construction du job '${env.JOB_NAME} [#${env.BUILD_NUMBER}]'",
+                body: """
+                    <html>
+                        <body>
+                            <h2 style="color: red;">❌ ÉCHEC : Job '${env.JOB_NAME} [#${env.BUILD_NUMBER}]'</h2>
+                            <p>Le job a échoué.</p>
+                            <h3>Détails :</h3>
+                            <ul>
+                                <li><strong>Nom du job :</strong> ${env.JOB_NAME}</li>
+                                <li><strong>Numéro de build :</strong> ${env.BUILD_NUMBER}</li>
+                            </ul>
+                        </body>
+                    </html>
+                """,
+                mimeType: 'text/html',
+                to: "bassem.mahjoub1013@gmail.com"
+            )
+        }
+    }
+}
