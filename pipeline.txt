@@ -10,7 +10,7 @@ pipeline {
         stage('Clonage du dépôt') {
             steps {
                 echo 'Téléchargement...'
-                git branch: 'bassem', url: 'https://github.com/Reformed2D/Reformed2D_Devops.git', credentialsId: 'github-pat'
+                git branch: 'Bessem', url: 'https://github.com/Bessem-Mahjoub', credentialsId: 'github-pat'
             }
         }
         stage('Test Maven') {
